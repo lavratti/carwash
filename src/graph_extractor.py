@@ -3,24 +3,13 @@ import json
 from multiprocessing.sharedctypes import Value
 
 
-envolvidos_por_acao = []
+grupos_de_envolvidos = []
 
 with open('MPF-Lava-jato.html', 'r') as raw_html:
     lines = raw_html.readlines()
 
 for i in range(len(lines)):
 
-    """
-        if '                                    <p>' in lines[i]:
-            acao['data'] = str(lines[i][39:49]) #datetime.strptime(str(lines[i][39:49]), '%d/%m/%Y')
-
-        if '                                        <b>'in lines[i]:
-            acao['acao'] = lines[i][43:-5]
-
-        if '                                    <h4>' in lines[i] and lines[i][40].isalnum():
-            acao['numero'] = lines[i][40:-6]
-            acao['numero'] = acao['numero'][:acao['numero'].find(' ')]
-    """
     if 'ENVOLVIDOS' in lines[i]:
         j = 1
         envolvidos = lines[i+j][42:]
@@ -42,90 +31,54 @@ for i in range(len(lines)):
         envolvidos = [x for x in envolvidos if len(x) < 100 and x[0].isupper()]
 
     if 'clearfix' in lines[i]:
-        envolvidos_por_acao.append(envolvidos)
+        grupos_de_envolvidos.append(envolvidos)
 
-unique_envolvidos = []
-for grupo in envolvidos_por_acao:
-    for pessoa in grupo:
-        if not pessoa in unique_envolvidos:
-            unique_envolvidos.append(pessoa)
+id = 0
+ids_envolvidos = {}
+pesos_envolvidos = {}
 
-print(unique_envolvidos)
+for grupo in grupos_de_envolvidos:
+    for envolvido in grupo:
+        if not envolvido in ids_envolvidos.keys():
+            id += 1
+            ids_envolvidos[envolvido] = id
+            pesos_envolvidos[envolvido] = 0
 
-acoes_por_pessoa = {}
-for acao in envolvidos_por_acao:
-    for envolvido in acao:
-        acoes_por_pessoa[envolvido] = 0
-for acao in envolvidos_por_acao:
-    for envolvido in acao:
-        acoes_por_pessoa[envolvido] += 1
-dict_pesos = {
-    'nome' : [],
-    'casos': []
-}
-for envolvido in acoes_por_pessoa.keys():
-    dict_pesos['nome'].append(envolvido)
-    dict_pesos['casos'].append(acoes_por_pessoa[envolvido])
+for grupo in grupos_de_envolvidos:
+    for envolvido in grupo:
+        pesos_envolvidos[envolvido] += 1
 
-dict_grafo = {
-                'to': [],
-                'from': []
-            }
+pares_envolvidos = []
 
-for acao in envolvidos_por_acao:
-    for envolvido in acao:
-        for outro_envolvido in acao:
-            if not envolvido == outro_envolvido:
-                dict_grafo['to'].append(envolvido)
-                dict_grafo['from'].append(outro_envolvido)
+for grupo in grupos_de_envolvidos:
+    for envolvido in grupo:
+        for outro_envolvido in grupo:
+            if (not envolvido == outro_envolvido 
+                and sorted([envolvido, outro_envolvido]) not in pares_envolvidos):
+                pares_envolvidos.append(sorted([envolvido, outro_envolvido]))
 
-
+# VIS
+limite_inferior = 0
 vis_nodes = []
-i = 0
-for pessoa in unique_envolvidos:
-    i += 1
-    vis_nodes.append({"id":i, "value":acoes_por_pessoa[pessoa], "label":pessoa})
-
 vis_edges = []
-for acao in envolvidos_por_acao:
-    for envolvido in acao:
-        for outro_envolvido in acao:
-            if not envolvido == outro_envolvido:
-                vis_edges.append({'from':envolvido, 'to':outro_envolvido, 'value':1})
+
+for envolvido in ids_envolvidos.keys():
+    if pesos_envolvidos[envolvido] > limite_inferior:
+        vis_nodes.append({"id":ids_envolvidos[envolvido], "value":pesos_envolvidos[envolvido], "label":envolvido})
+
+for par in pares_envolvidos:
+    if (pesos_envolvidos[par[0]] > limite_inferior
+        and pesos_envolvidos[par[1]] > limite_inferior):
+        vis_edges.append(
+            {
+                'from':ids_envolvidos[par[0]],
+                'to':ids_envolvidos[par[1]],
+                'value':min(pesos_envolvidos[par[0]],pesos_envolvidos[par[1]])
+            }
+        )
 
 
-with open('json_out_nodes.json', 'w') as fp:
-    json.dump(vis_nodes, fp)
-with open('json_out_edges.json', 'w') as fp:
-    json.dump(vis_edges, fp)
-
-"""
-# libraries
-import pandas as pd
-import numpy as np
-import networkx as nx
-import matplotlib.pyplot as plt
- 
-# Build a dataframe with your connections
-df = pd.DataFrame(dict_grafo)
- 
-# And a data frame with characteristics for your nodes
-carac = pd.DataFrame(dict_pesos)
- 
-# Build your graph
-G=nx.from_pandas_edgelist(df, 'from', 'to', create_using=nx.Graph() )
- 
-# The order of the node for networkX is the following order:
-G.nodes()
-# NodeView(('A', 'D', 'B', 'C', 'E'))
-
-# Thus, we cannot give directly the 'myvalue' column to netowrkX, we need to arrange the order!
- 
-# Here is the tricky part: I need to reorder carac, to assign the good color to each node
-carac= carac.set_index('nome')
-carac=carac.reindex(G.nodes())
- 
-# Plot it, providing a continuous color scale with cmap:
-nx.draw(G, with_labels=False, node_color=carac['casos'].astype(int), cmap=plt.cm.hot)
-plt.show()
-"""
+with open('json_out_nodes.json', 'w', encoding='utf8') as fp:
+    json.dump(vis_nodes, fp, ensure_ascii=False,)
+with open('json_out_edges.json', 'w', encoding='utf8') as fp:
+    json.dump(vis_edges, fp, ensure_ascii=False,)
