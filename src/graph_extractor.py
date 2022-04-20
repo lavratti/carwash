@@ -2,7 +2,6 @@ from enum import unique
 import json
 from multiprocessing.sharedctypes import Value
 
-
 grupos_de_envolvidos = []
 
 with open('MPF-Lava-jato.html', 'r') as raw_html:
