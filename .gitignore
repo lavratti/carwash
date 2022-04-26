@@ -129,4 +129,4 @@ dmypy.json
 .pyre/
 
 # temporary folders contents
-/temp/*
+*/temp/**
