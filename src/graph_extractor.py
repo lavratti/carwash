@@ -1,12 +1,12 @@
-from enum import unique
 import json
-from multiprocessing.sharedctypes import Value
+import urllib.request
 
+
+url_mpf = 'http://www.mpf.mp.br/grandes-casos/lava-jato/acoes/lavajato-acoes-view'
+raw_html = urllib.request.urlopen(url_mpf).read().decode("utf8")
 
 envolvidos_por_acao = []
-
-with open('MPF-Lava-jato.html', 'r') as raw_html:
-    lines = raw_html.readlines()
+lines = raw_html.splitlines()
 
 for i in range(len(lines)):
 
@@ -50,8 +50,6 @@ for grupo in envolvidos_por_acao:
         if not pessoa in unique_envolvidos:
             unique_envolvidos.append(pessoa)
 
-print(unique_envolvidos)
-
 acoes_por_pessoa = {}
 for acao in envolvidos_por_acao:
     for envolvido in acao:
@@ -94,9 +92,9 @@ for acao in envolvidos_por_acao:
                 vis_edges.append({'from':envolvido, 'to':outro_envolvido, 'value':1})
 
 
-with open('json_out_nodes.json', 'w') as fp:
+with open('temp/json_out_nodes.json', 'w') as fp:
     json.dump(vis_nodes, fp)
-with open('json_out_edges.json', 'w') as fp:
+with open('temp/json_out_edges.json', 'w') as fp:
     json.dump(vis_edges, fp)
 
 """
