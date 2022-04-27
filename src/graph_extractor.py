@@ -1,129 +1,147 @@
 import json
+import logging
+from operator import pos
+from os import path
+import re
+import traceback
 import urllib.request
+from tqdm import tqdm
+
+# Inicialização do módulo para log
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s")
+ch = logging.StreamHandler()
+fh = logging.FileHandler("temp/carwash.log")
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+logger.addHandler(fh)
+logger.addHandler(ch)
+logger.info("Iniciando Script")
+
+# Página do Ministério Público Federal
+url = "http://www.mpf.mp.br/grandes-casos/lava-jato/acoes/lavajato-acoes-view"
+
+# Se existe uma cópia local da página, usar ela, senão request.
+if path.isfile("temp/cashed_response.html"):
+    logger.info("Cópia local da página encontrada.")
+    with open("temp/cashed_response.html", "r") as fp:
+        raw_html = fp.read()
+
+else:
+    # Faz a request da página do Ministério Público Federal e salva localmente.
+    logger.info("Baixando cópia da página.")
+    try:
+        response = urllib.request.urlopen(url)
+        raw_html = response.read().decode("utf8")
+        with open("temp/cashed_response.html", "w") as fp:
+            fp.write(raw_html)
+
+    # Se a request falhar, escrever o motivo no log.
+    except Exception as e:
+        logger.error("A requisição da url falhou.")
+        logger.debug(traceback.format_exc())
 
 
-url_mpf = 'http://www.mpf.mp.br/grandes-casos/lava-jato/acoes/lavajato-acoes-view'
-raw_html = urllib.request.urlopen(url_mpf).read().decode("utf8")
-
+# Com o documento em memória, varrer para encontrar os envolvidos e colocar em uma lista.
+logger.info("Varrendo arquivo...")
 envolvidos_por_acao = []
-lines = raw_html.splitlines()
+inicio_bloco = 0
+final_bloco = 0
+pos_atual = 0
+while pos_atual < len(raw_html):
 
-for i in range(len(lines)):
+    # Encontra o proximo "token" 'ENVOLVIDOS'
+    pos_atual = raw_html.find("ENVOLVIDOS", final_bloco)
+    inicio_bloco = raw_html.find("<div>", pos_atual) + len("<div>")
+    final_bloco = raw_html.find("</div>", inicio_bloco)
+    bloco = raw_html[inicio_bloco:final_bloco]
 
-    """
-        if '                                    <p>' in lines[i]:
-            acao['data'] = str(lines[i][39:49]) #datetime.strptime(str(lines[i][39:49]), '%d/%m/%Y')
+    # Se não encontrar, sai do loop
+    if pos_atual == -1 or inicio_bloco == -1 or final_bloco == -1 or len(bloco) < 1:
+        break
 
-        if '                                        <b>'in lines[i]:
-            acao['acao'] = lines[i][43:-5]
+    # Tratamento do bloco encontrado a lista de blocos
+    # Troca " e" por ", "
+    # Troca ";", ".", "\n" e outros caracteres de espaço, como "&nbsp" por " "
+    # Remove espaços repetidos, à esquerda e à direita
+    # Separa a string (todos os envolvidos) em uma lista de strings (cada envolvido)
+    # Remove da lista de envolvidos alguns valores estranhos
+    bloco = re.sub("[ ][e]", ", ", bloco)
+    bloco = re.sub("[;.\n\s]", " ", bloco)
+    bloco = re.sub(" +", " ", bloco)
+    bloco = bloco.strip()
+    bloco = list(set(bloco.split(sep=", ")))
+    bloco = [x for x in bloco if len(x) < 100 and x[0].isupper()]
 
-        if '                                    <h4>' in lines[i] and lines[i][40].isalnum():
-            acao['numero'] = lines[i][40:-6]
-            acao['numero'] = acao['numero'][:acao['numero'].find(' ')]
-    """
-    if 'ENVOLVIDOS' in lines[i]:
-        j = 1
-        envolvidos = lines[i+j][42:]
-        while not '</div>' in lines[i+j]:
-            j += 1
-            envolvidos += lines[i+j]
-        envolvidos = envolvidos.replace(' e', ', ')
-        envolvidos = envolvidos.replace(' e ', ', ')
-        envolvidos = envolvidos.replace('\n', '')
-        envolvidos = envolvidos.replace('&nbsp', ' ')
-        envolvidos = envolvidos.replace(';', ' ')
-        envolvidos = envolvidos.replace('.', ' ')
-        envolvidos = envolvidos.replace('<div>', ' ')
-        envolvidos = envolvidos.replace('</div>', ' ')
-        while '  ' in envolvidos: 
-            envolvidos = envolvidos.replace('  ', ' ')
-        envolvidos = envolvidos.strip()
-        envolvidos = list(set(envolvidos.split(sep=', ')))
-        envolvidos = [x for x in envolvidos if len(x) < 100 and x[0].isupper()]
+    # Adciona para a lista de envolvidos agrupados por ação
+    envolvidos_por_acao.append(bloco)
 
-    if 'clearfix' in lines[i]:
-        envolvidos_por_acao.append(envolvidos)
-
+# Buscar cada um dos envolvidos, sem repetir, e colocar em uma lista
 unique_envolvidos = []
 for grupo in envolvidos_por_acao:
     for pessoa in grupo:
         if not pessoa in unique_envolvidos:
             unique_envolvidos.append(pessoa)
 
+
+# Montar dicionário de pesos baseado no número de ações de cada envolvido
+
+# Inicializar o dicionário de # ações por pessoa
 acoes_por_pessoa = {}
-for acao in envolvidos_por_acao:
-    for envolvido in acao:
-        acoes_por_pessoa[envolvido] = 0
+for envolvido in unique_envolvidos:
+    acoes_por_pessoa[envolvido] = 0
+
+# Contar em quantas ações cada envolvido participou
 for acao in envolvidos_por_acao:
     for envolvido in acao:
         acoes_por_pessoa[envolvido] += 1
-dict_pesos = {
-    'nome' : [],
-    'casos': []
-}
+
+
+# Montar dicionário com os nós do grafo
+dict_nodes = {"nome": [], "peso": [], "tipo": []}
+# Envolvidos
 for envolvido in acoes_por_pessoa.keys():
-    dict_pesos['nome'].append(envolvido)
-    dict_pesos['casos'].append(acoes_por_pessoa[envolvido])
+    dict_nodes["nome"].append(envolvido)
+    dict_nodes["peso"].append(acoes_por_pessoa[envolvido])
+    dict_nodes["tipo"].append("envolvido")
+# Ações
+id = 0
+for grupo in envolvidos_por_acao:
+    dict_nodes["nome"].append("acao-".format(id))
+    dict_nodes["peso"].append(len(grupo))
+    dict_nodes["tipo"].append("acao")
+    id += 1
 
-dict_grafo = {
-                'to': [],
-                'from': []
-            }
-
+# Montar dicionário com as ligações do grafo
+id = 0
+dict_grafo = {"to": [], "from": []}
 for acao in envolvidos_por_acao:
     for envolvido in acao:
-        for outro_envolvido in acao:
-            if not envolvido == outro_envolvido:
-                dict_grafo['to'].append(envolvido)
-                dict_grafo['from'].append(outro_envolvido)
+        dict_grafo["to"].append("acao-".format(id))
+        dict_grafo["from"].append(envolvido)
+
+logger.info("Total de ações: {}".format(len(envolvidos_por_acao)))
+logger.info("Total de envolvidos: {}".format(len(unique_envolvidos)))
+logger.info("Total de relações: {}".format(len(dict_grafo["to"])))
 
 
+## VIS ##
 vis_nodes = []
 i = 0
-for pessoa in unique_envolvidos:
+for pessoa in dict_nodes:
     i += 1
-    vis_nodes.append({"id":i, "value":acoes_por_pessoa[pessoa], "label":pessoa})
+    vis_nodes.append({"id": i, "value": acoes_por_pessoa[pessoa], "label": pessoa})
 
 vis_edges = []
 for acao in envolvidos_por_acao:
     for envolvido in acao:
         for outro_envolvido in acao:
             if not envolvido == outro_envolvido:
-                vis_edges.append({'from':envolvido, 'to':outro_envolvido, 'value':1})
+                vis_edges.append({"from": envolvido, "to": outro_envolvido, "value": 1})
 
 
-with open('temp/json_out_nodes.json', 'w') as fp:
+with open("temp/json_out_nodes.json", "w") as fp:
     json.dump(vis_nodes, fp)
-with open('temp/json_out_edges.json', 'w') as fp:
+with open("temp/json_out_edges.json", "w") as fp:
     json.dump(vis_edges, fp)
-
-"""
-# libraries
-import pandas as pd
-import numpy as np
-import networkx as nx
-import matplotlib.pyplot as plt
- 
-# Build a dataframe with your connections
-df = pd.DataFrame(dict_grafo)
- 
-# And a data frame with characteristics for your nodes
-carac = pd.DataFrame(dict_pesos)
- 
-# Build your graph
-G=nx.from_pandas_edgelist(df, 'from', 'to', create_using=nx.Graph() )
- 
-# The order of the node for networkX is the following order:
-G.nodes()
-# NodeView(('A', 'D', 'B', 'C', 'E'))
-
-# Thus, we cannot give directly the 'myvalue' column to netowrkX, we need to arrange the order!
- 
-# Here is the tricky part: I need to reorder carac, to assign the good color to each node
-carac= carac.set_index('nome')
-carac=carac.reindex(G.nodes())
- 
-# Plot it, providing a continuous color scale with cmap:
-nx.draw(G, with_labels=False, node_color=carac['casos'].astype(int), cmap=plt.cm.hot)
-plt.show()
-"""
