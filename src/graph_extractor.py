@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import traceback
@@ -101,33 +102,43 @@ for acao in envolvidos_por_acao:
 
 # Montar dicionário com os nós do grafo
 dict_nodes = {
+    "id":[],
     "name": [],
     "type": [],
     "weight": [],
 }
+dict_grafo = {"to": [], "from": [], "weight": []}
+
 # Append Envolvidos
+id = 0
+id_from_envolvido = {}
 for envolvido in acoes_por_pessoa.keys():
+    id_from_envolvido[envolvido] = id
+    dict_nodes["id"].append(id)
     dict_nodes["name"].append(envolvido)
     dict_nodes["type"].append("envolvido")
     dict_nodes["weight"].append(acoes_por_pessoa[envolvido])
+    id += 1
 # Append Ações
-id = 0
+id = 1000
 for grupo in envolvidos_por_acao:
-    dict_nodes["name"].append("acao-".format(id))
+    dict_nodes["id"].append(id)
+    dict_nodes["name"].append("acao-{}".format(id))
     dict_nodes["type"].append("acao")
     dict_nodes["weight"].append(len(grupo))
-    id += 1
-
-# Montar dicionário com as ligações do grafo
-id = 0
-dict_grafo = {"to": [], "from": [], "weight": []}
-for grupo in envolvidos_por_acao:
+    # Ligações do grafo
     for envolvido in grupo:
-        dict_grafo["to"].append("acao-".format(id))
-        dict_grafo["from"].append(envolvido)
-        dict_grafo["weight"].append((acoes_por_pessoa[envolvido] + len(grupo)) / 2)
+        dict_grafo["to"].append(id)
+        dict_grafo["from"].append(id_from_envolvido[envolvido])
+        dict_grafo["weight"].append(int((acoes_por_pessoa[envolvido] + len(grupo)) / 2))
+    
     id += 1
 
 logger.info("Total de ações: {}".format(len(envolvidos_por_acao)))
 logger.info("Total de envolvidos: {}".format(len(unique_envolvidos)))
 logger.info("Total de relações: {}".format(len(dict_grafo["to"])))
+
+with open('temp/output_nodes.json', 'w', encoding='utf-8') as fp:
+    json.dump(dict_nodes, fp, ensure_ascii=False, indent=True)
+with open('temp/output_grafo.json', 'w', encoding='utf-8') as fp:
+    json.dump(dict_grafo, fp, ensure_ascii=False, indent=True)
