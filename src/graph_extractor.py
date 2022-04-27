@@ -56,8 +56,12 @@ while pos_atual < len(raw_html):
     bloco = raw_html[inicio_bloco:final_bloco]
 
     # Se não encontrar, sai do loop
-    if pos_atual == -1 or inicio_bloco == -1 or final_bloco == -1 or len(bloco) < 1:
+    if pos_atual == -1 or inicio_bloco == -1 or final_bloco == -1:
         break
+    
+    # Se "<div></div>, pular"
+    if len(bloco) < 1:
+        continue
 
     # Tratamento do bloco encontrado a lista de blocos
     # Troca " e" por ", "
@@ -119,8 +123,9 @@ for envolvido in acoes_por_pessoa.keys():
     dict_nodes["type"].append("envolvido")
     dict_nodes["weight"].append(acoes_por_pessoa[envolvido])
     id += 1
+
 # Append Ações
-id = 1000
+id = 10000
 for grupo in envolvidos_por_acao:
     dict_nodes["id"].append(id)
     dict_nodes["name"].append("acao-{}".format(id))
