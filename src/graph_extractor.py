@@ -1,11 +1,8 @@
-import json
 import logging
-from operator import pos
-from os import path
 import re
 import traceback
 import urllib.request
-from tqdm import tqdm
+from os import path
 
 # Inicialização do módulo para log
 logger = logging.getLogger()
@@ -77,6 +74,8 @@ while pos_atual < len(raw_html):
     # Adciona para a lista de envolvidos agrupados por ação
     envolvidos_por_acao.append(bloco)
 
+logger.info("Processando blocos de açõe/envolvidos...")
+
 # Buscar cada um dos envolvidos, sem repetir, e colocar em uma lista
 unique_envolvidos = []
 for grupo in envolvidos_por_acao:
@@ -84,64 +83,51 @@ for grupo in envolvidos_por_acao:
         if not pessoa in unique_envolvidos:
             unique_envolvidos.append(pessoa)
 
-
 # Montar dicionário de pesos baseado no número de ações de cada envolvido
-
 # Inicializar o dicionário de # ações por pessoa
 acoes_por_pessoa = {}
 for envolvido in unique_envolvidos:
     acoes_por_pessoa[envolvido] = 0
-
 # Contar em quantas ações cada envolvido participou
 for acao in envolvidos_por_acao:
     for envolvido in acao:
         acoes_por_pessoa[envolvido] += 1
 
 
+################################################################################
+# Montar dicionários do grafo
+################################################################################
+
+
 # Montar dicionário com os nós do grafo
-dict_nodes = {"nome": [], "peso": [], "tipo": []}
-# Envolvidos
+dict_nodes = {
+    "name": [],
+    "type": [],
+    "weight": [],
+}
+# Append Envolvidos
 for envolvido in acoes_por_pessoa.keys():
-    dict_nodes["nome"].append(envolvido)
-    dict_nodes["peso"].append(acoes_por_pessoa[envolvido])
-    dict_nodes["tipo"].append("envolvido")
-# Ações
+    dict_nodes["name"].append(envolvido)
+    dict_nodes["type"].append("envolvido")
+    dict_nodes["weight"].append(acoes_por_pessoa[envolvido])
+# Append Ações
 id = 0
 for grupo in envolvidos_por_acao:
-    dict_nodes["nome"].append("acao-".format(id))
-    dict_nodes["peso"].append(len(grupo))
-    dict_nodes["tipo"].append("acao")
+    dict_nodes["name"].append("acao-".format(id))
+    dict_nodes["type"].append("acao")
+    dict_nodes["weight"].append(len(grupo))
     id += 1
 
 # Montar dicionário com as ligações do grafo
 id = 0
-dict_grafo = {"to": [], "from": []}
-for acao in envolvidos_por_acao:
-    for envolvido in acao:
+dict_grafo = {"to": [], "from": [], "weight": []}
+for grupo in envolvidos_por_acao:
+    for envolvido in grupo:
         dict_grafo["to"].append("acao-".format(id))
         dict_grafo["from"].append(envolvido)
+        dict_grafo["weight"].append((acoes_por_pessoa[envolvido] + len(grupo)) / 2)
+    id += 1
 
 logger.info("Total de ações: {}".format(len(envolvidos_por_acao)))
 logger.info("Total de envolvidos: {}".format(len(unique_envolvidos)))
 logger.info("Total de relações: {}".format(len(dict_grafo["to"])))
-
-
-## VIS ##
-vis_nodes = []
-i = 0
-for pessoa in dict_nodes:
-    i += 1
-    vis_nodes.append({"id": i, "value": acoes_por_pessoa[pessoa], "label": pessoa})
-
-vis_edges = []
-for acao in envolvidos_por_acao:
-    for envolvido in acao:
-        for outro_envolvido in acao:
-            if not envolvido == outro_envolvido:
-                vis_edges.append({"from": envolvido, "to": outro_envolvido, "value": 1})
-
-
-with open("temp/json_out_nodes.json", "w") as fp:
-    json.dump(vis_nodes, fp)
-with open("temp/json_out_edges.json", "w") as fp:
-    json.dump(vis_edges, fp)
